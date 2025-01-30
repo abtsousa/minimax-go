@@ -1,3 +1,3 @@
-module github.com/abtsousa/minimax-go/v1
+module github.com/abtsousa/minimax-go
 
 go 1.23.5
