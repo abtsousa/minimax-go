@@ -1,4 +1,3 @@
-// Minimax algorithm implementation in Go
 package minimax
 
 // SCORE is the default score for the terminal state
@@ -13,8 +12,9 @@ type node[T comparable] struct {
 	depth    int        // Depth of the node in the tree
 	isMax    bool       // True if the node is a max node
 	elem     *T         // Stores game state (pointer)
-	children []*node[T] // Children of the node
+	children []*node[T] // Children of the node (generated lazily)
 	bestMove *node[T]   // Best move to make (pointer)
+	expanded bool       // Whether children have been generated
 }
 
 // Minimax is the main struct that holds the move map (cache)
@@ -30,6 +30,11 @@ type Minimax[T comparable] struct {
 
 // Solve returns the best possible move for the given state
 func (m Minimax[T]) Solve(state T) *T {
+
+	if m.config.isTerminal(&state) {
+		return nil
+	}
+
 	bestMove := m.moveMap[state]
 	if bestMove != nil {
 		return bestMove
@@ -50,35 +55,18 @@ func (m Minimax[T]) Solve(state T) *T {
 // - successors: a function that returns the possible moves from the state
 // - isMax: true if the initial state is a max node (AI's turn)
 func Make[T comparable](state *T, isTerminal func(*T) bool, utility func(*T) int, successors func(*T) []*T, isMax bool) Minimax[T] {
-
-	var makeNode func(*T, int, bool) node[T]
-	makeNode = func(state *T, depth int, isMax bool) node[T] {
-
-		successors := successors(state)
-
-		var children []*node[T]
-		for _, succ := range successors {
-			n := makeNode(succ, depth+1, !isMax)
-			children = append(children, &n)
-		}
-
-		n := node[T]{
-			val:      0,
-			alpha:    -SCORE,
-			beta:     SCORE,
-			depth:    depth,
-			isMax:    isMax,
-			elem:     state,
-			children: children,
-			bestMove: nil,
-		}
-
-		return n
+	root := &node[T]{
+		val:      0,
+		alpha:    -SCORE,
+		beta:     SCORE,
+		depth:    0,
+		isMax:    isMax,
+		elem:     state,
+		expanded: false,
 	}
 
 	mp := make(map[T]*T)
-	root := makeNode(state, 0, isMax)
-	minimax(&root, isTerminal, utility, mp)
+	minimax(root, isTerminal, utility, successors, mp)
 
 	return Minimax[T]{
 		moveMap: mp,
@@ -96,20 +84,39 @@ func Make[T comparable](state *T, isTerminal func(*T) bool, utility func(*T) int
 	}
 }
 
-// Minimax algorithm implementation
-func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T) int, mp map[T]*T) {
+// expandNode generates children nodes only when needed
+func expandNode[T comparable](n *node[T], successors func(*T) []*T) {
+	if n.expanded {
+		return
+	}
 
-	// Initialize alpha and beta for root node
-	n.alpha = -SCORE
-	n.beta = SCORE
+	successorStates := successors(n.elem)
+	n.children = make([]*node[T], 0, len(successorStates))
 
+	for _, succ := range successorStates {
+		child := &node[T]{
+			val:      0,
+			alpha:    -SCORE,
+			beta:     SCORE,
+			depth:    n.depth + 1,
+			isMax:    !n.isMax,
+			elem:     succ,
+			expanded: false,
+		}
+		n.children = append(n.children, child)
+	}
+
+	n.expanded = true
+}
+
+func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T) int, successors func(*T) []*T, mp map[T]*T) {
 	// Best move already calculated, skipping
 	if n.bestMove != nil {
 		return
 	}
 
 	// Terminal move found, return score
-	if isTerminal(n.elem) || len(n.children) == 0 {
+	if isTerminal(n.elem) {
 		switch u := utility(n.elem); {
 		case u > 0:
 			n.val = SCORE - n.depth
@@ -121,54 +128,56 @@ func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T
 		return
 	}
 
+	// Lazily expand node
+	expandNode(n, successors)
+
+	// If no children after expansion, treat as terminal
+	if len(n.children) == 0 {
+		n.val = utility(n.elem)
+		return
+	}
+
 	var bestMove *node[T]
 	if n.isMax {
-		max_eval := -SCORE
+		maxEval := -SCORE
 		for _, child := range n.children {
-			// Pass down alpha and beta values
 			child.alpha = n.alpha
 			child.beta = n.beta
 
-			// Recursive minimax call
-			minimax(child, isTerminal, utility, mp)
+			minimax(child, isTerminal, utility, successors, mp)
 			eval := child.val
-			if eval > max_eval {
-				max_eval = eval
+			if eval > maxEval {
+				maxEval = eval
 				bestMove = child
 			}
-			n.alpha = max(n.alpha, max_eval)
+			n.alpha = max(n.alpha, maxEval)
 
-			// Prune if possible
 			if n.beta <= n.alpha {
 				break // Beta cutoff
 			}
 		}
-		n.val = max_eval
+		n.val = maxEval
 	} else {
-		min_eval := SCORE
+		minEval := SCORE
 		for _, child := range n.children {
-			// Pass down alpha and beta values
 			child.alpha = n.alpha
 			child.beta = n.beta
 
-			minimax(child, isTerminal, utility, mp)
+			minimax(child, isTerminal, utility, successors, mp)
 			eval := child.val
-			if eval < min_eval {
-				min_eval = eval
+			if eval < minEval {
+				minEval = eval
 				bestMove = child
 			}
-			n.beta = min(n.beta, min_eval)
+			n.beta = min(n.beta, minEval)
 
 			if n.beta <= n.alpha {
 				break // Alpha cutoff
 			}
-
 		}
-		n.val = min_eval
+		n.val = minEval
 	}
 
-	// Store best move and update cache
 	n.bestMove = bestMove
 	mp[*n.elem] = n.bestMove.elem
-	return
 }
