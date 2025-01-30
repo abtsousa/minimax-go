@@ -8,6 +8,8 @@ const SCORE = 100
 // T is the type of the state and must be comparable
 type node[T comparable] struct {
 	val      int        // Value (score) of the node
+	alpha    int        // Alpha value for alpha-beta pruning
+	beta     int        // Beta value for alpha-beta pruning
 	depth    int        // Depth of the node in the tree
 	isMax    bool       // True if the node is a max node
 	elem     *T         // Stores game state (pointer)
@@ -18,11 +20,26 @@ type node[T comparable] struct {
 // Minimax is the main struct that holds the move map (cache)
 type Minimax[T comparable] struct {
 	moveMap map[T]*T //Cache
+	config  struct {
+		isTerminal func(*T) bool
+		utility    func(*T) int
+		successors func(*T) []*T
+		isMax      bool
+	}
 }
 
 // Solve returns the best possible move for the given state
 func (m Minimax[T]) Solve(state T) *T {
-	return m.moveMap[state]
+	bestMove := m.moveMap[state]
+	if bestMove != nil {
+		return bestMove
+	}
+
+	// No best move found, possibly pruned tree (from suboptimal move)
+	// Rerun algorithm to find best move
+	newMM := Make(&state, m.config.isTerminal, m.config.utility, m.config.successors, m.config.isMax)
+	m.moveMap = newMM.moveMap
+	return m.Solve(state)
 }
 
 // Make creates a new Minimax struct. You must provide:
@@ -47,6 +64,8 @@ func Make[T comparable](state *T, isTerminal func(*T) bool, utility func(*T) int
 
 		n := node[T]{
 			val:      0,
+			alpha:    -SCORE,
+			beta:     SCORE,
 			depth:    depth,
 			isMax:    isMax,
 			elem:     state,
@@ -59,13 +78,30 @@ func Make[T comparable](state *T, isTerminal func(*T) bool, utility func(*T) int
 
 	mp := make(map[T]*T)
 	root := makeNode(state, 0, isMax)
-	minimax[T](&root, isTerminal, utility, mp)
+	minimax(&root, isTerminal, utility, mp)
 
-	return Minimax[T]{moveMap: mp}
+	return Minimax[T]{
+		moveMap: mp,
+		config: struct {
+			isTerminal func(*T) bool
+			utility    func(*T) int
+			successors func(*T) []*T
+			isMax      bool
+		}{
+			isTerminal: isTerminal,
+			utility:    utility,
+			successors: successors,
+			isMax:      isMax,
+		},
+	}
 }
 
 // Minimax algorithm implementation
 func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T) int, mp map[T]*T) {
+
+	// Initialize alpha and beta for root node
+	n.alpha = -SCORE
+	n.beta = SCORE
 
 	// Best move already calculated, skipping
 	if n.bestMove != nil {
@@ -85,30 +121,50 @@ func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T
 		return
 	}
 
-	// Recursive minimax call
 	var bestMove *node[T]
 	if n.isMax {
-		max := -SCORE
+		max_eval := -SCORE
 		for _, child := range n.children {
+			// Pass down alpha and beta values
+			child.alpha = n.alpha
+			child.beta = n.beta
+
+			// Recursive minimax call
 			minimax(child, isTerminal, utility, mp)
 			eval := child.val
-			if eval > max {
-				max = eval
+			if eval > max_eval {
+				max_eval = eval
 				bestMove = child
 			}
+			n.alpha = max(n.alpha, max_eval)
+
+			// Prune if possible
+			if n.beta <= n.alpha {
+				break // Beta cutoff
+			}
 		}
-		n.val = max
+		n.val = max_eval
 	} else {
-		min := SCORE
+		min_eval := SCORE
 		for _, child := range n.children {
+			// Pass down alpha and beta values
+			child.alpha = n.alpha
+			child.beta = n.beta
+
 			minimax(child, isTerminal, utility, mp)
 			eval := child.val
-			if eval < min {
-				min = eval
+			if eval < min_eval {
+				min_eval = eval
 				bestMove = child
 			}
+			n.beta = min(n.beta, min_eval)
+
+			if n.beta <= n.alpha {
+				break // Alpha cutoff
+			}
+
 		}
-		n.val = min
+		n.val = min_eval
 	}
 
 	// Store best move and update cache
