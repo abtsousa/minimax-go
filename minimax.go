@@ -1,7 +1,31 @@
+// Package minimax provides an implementation of the Minimax algorithm with alpha-beta pruning.
+// The Minimax algorithm is used in decision-making and game theory to determine the optimal move for a player.
+//
+// The package includes features such as alpha-beta pruning and lazy node expansion to optimize performance and memory usage.
+//
+// Usage:
+//
+// 1. Define the game state by creating a type that represents the state of your game.
+//
+// 2. Implement the required functions:
+// - state: the initial gamestate
+// - isTerminal: a function that returns true if the state is terminal
+// - utility: a function that should return -1 if the state is a loss for the AI, 1 if it's a win and 0 if it's a draw
+// - successors: a function that returns the possible moves from the state
+// - isMax: true if the initial state is a max node (AI's turn)
+//
+// 3. Create a Minimax instance using the `Make` function.
+//
+// 4. Solve for the best move using the `Solve` method.
+//
+// Example:
+//
+//	mm := minimax.Make(&state, isTerminal, utility, successors, true)
+//	bestMove := mm.Solve(state)
 package minimax
 
-// SCORE is the default score for the terminal state
-const SCORE = 100
+// score is the default score for the terminal state
+const score = 100
 
 // Node represents a node in the minimax tree
 // T is the type of the state and must be comparable
@@ -19,7 +43,7 @@ type node[T comparable] struct {
 
 // Minimax is the main struct that holds the move map (cache)
 type Minimax[T comparable] struct {
-	moveMap map[T]*T //Cache
+	moveMap map[T]*T // Cache
 	config  struct {
 		isTerminal func(*T) bool
 		utility    func(*T) int
@@ -30,7 +54,6 @@ type Minimax[T comparable] struct {
 
 // Solve returns the best possible move for the given state
 func (m Minimax[T]) Solve(state T) *T {
-
 	if m.config.isTerminal(&state) {
 		return nil
 	}
@@ -42,7 +65,8 @@ func (m Minimax[T]) Solve(state T) *T {
 
 	// No best move found, possibly pruned tree (from suboptimal move)
 	// Rerun algorithm to find best move
-	newMM := Make(&state, m.config.isTerminal, m.config.utility, m.config.successors, m.config.isMax)
+	cf := m.config
+	newMM := Make(&state, cf.isTerminal, cf.utility, cf.successors, cf.isMax)
 	m.moveMap = newMM.moveMap
 	return m.Solve(state)
 }
@@ -50,15 +74,16 @@ func (m Minimax[T]) Solve(state T) *T {
 // Make creates a new Minimax struct. You must provide:
 // - state: the initial gamestate
 // - isTerminal: a function that returns true if the state is terminal
-// - utility: a function that should return -1 if the state is a loss for the AI,
-// 1 if it's a win and 0 if it's a draw
+// - utility: a function that should return -1 if the state is a loss for the AI, 1 if it's a win and 0 if it's a draw
 // - successors: a function that returns the possible moves from the state
 // - isMax: true if the initial state is a max node (AI's turn)
-func Make[T comparable](state *T, isTerminal func(*T) bool, utility func(*T) int, successors func(*T) []*T, isMax bool) Minimax[T] {
+func Make[T comparable](state *T, isTerminal func(*T) bool,
+	utility func(*T) int, successors func(*T) []*T, isMax bool,
+) Minimax[T] {
 	root := &node[T]{
 		val:      0,
-		alpha:    -SCORE,
-		beta:     SCORE,
+		alpha:    -score,
+		beta:     score,
 		depth:    0,
 		isMax:    isMax,
 		elem:     state,
@@ -96,8 +121,8 @@ func expandNode[T comparable](n *node[T], successors func(*T) []*T) {
 	for _, succ := range successorStates {
 		child := &node[T]{
 			val:      0,
-			alpha:    -SCORE,
-			beta:     SCORE,
+			alpha:    -score,
+			beta:     score,
 			depth:    n.depth + 1,
 			isMax:    !n.isMax,
 			elem:     succ,
@@ -109,7 +134,9 @@ func expandNode[T comparable](n *node[T], successors func(*T) []*T) {
 	n.expanded = true
 }
 
-func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T) int, successors func(*T) []*T, mp map[T]*T) {
+func minimax[T comparable](n *node[T], isTerminal func(*T) bool,
+	utility func(*T) int, successors func(*T) []*T, mp map[T]*T,
+) {
 	// Best move already calculated, skipping
 	if n.bestMove != nil {
 		return
@@ -119,9 +146,9 @@ func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T
 	if isTerminal(n.elem) {
 		switch u := utility(n.elem); {
 		case u > 0:
-			n.val = SCORE - n.depth
+			n.val = score - n.depth
 		case u < 0:
-			n.val = n.depth - SCORE
+			n.val = n.depth - score
 		default:
 			n.val = 0
 		}
@@ -139,7 +166,7 @@ func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T
 
 	var bestMove *node[T]
 	if n.isMax {
-		maxEval := -SCORE
+		maxEval := -score
 		for _, child := range n.children {
 			child.alpha = n.alpha
 			child.beta = n.beta
@@ -158,7 +185,7 @@ func minimax[T comparable](n *node[T], isTerminal func(*T) bool, utility func(*T
 		}
 		n.val = maxEval
 	} else {
-		minEval := SCORE
+		minEval := score
 		for _, child := range n.children {
 			child.alpha = n.alpha
 			child.beta = n.beta
