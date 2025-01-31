@@ -34,10 +34,10 @@ type node[T comparable] struct {
 	alpha    int        // Alpha value for alpha-beta pruning
 	beta     int        // Beta value for alpha-beta pruning
 	depth    int        // Depth of the node in the tree
-	isMax    bool       // True if the node is a max node
 	elem     *T         // Stores game state (pointer)
 	children []*node[T] // Children of the node (generated lazily)
 	bestMove *node[T]   // Best move to make (pointer)
+	isMax    bool       // True if the node is a max node
 	expanded bool       // Whether children have been generated
 }
 
